@@ -1,122 +1,130 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+/**
+ * Composant : App (conteneur principal)
+ * Couche : Conteneur (état + appels via service).
+ *
+ * Responsabilité :
+ *   - Gérer l'état global : liste des tickets, chargement, erreurs
+ *   - Appeler le service API (jamais directement fetch)
+ *   - Passer les données et callbacks aux composants enfants
+ *
+ * Architecture respectée :
+ *   App (conteneur) → ListeTickets (présentation)
+ *                   → FiltreStatut  (présentation)
+ *                   → FormulaireCreation (présentation)
+ *                   → ModaleConfirmation (présentation)
+ */
 
-function App() {
-  const [count, setCount] = useState(0)
+import { useCallback, useEffect, useState } from 'react';
+import type { ErreurAPI, Statut, Ticket } from './types/ticket';
+import { estUneErreur, fermerTicket, listerTickets } from './services/ticketService';
+import ListeTickets from './components/ListeTickets';
+import FiltreStatut from './components/FiltreStatut';
+import FormulaireCreation from './components/FormulaireCreation';
+import ModaleConfirmation from './components/ModaleConfirmation';
 
+export default function App() {
+  // ── État ──────────────────────────────────────────────────────────────────
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreurListe, setErreurListe] = useState<ErreurAPI | null>(null);
+  const [filtre, setFiltre] = useState<Statut | undefined>(undefined);
+
+  // Modale de confirmation de fermeture
+  const [idAFermer, setIdAFermer] = useState<number | null>(null);
+  const [erreurFermeture, setErreurFermeture] = useState<string | null>(null);
+
+  // ── Chargement de la liste ────────────────────────────────────────────────
+  const chargerTickets = useCallback(async () => {
+    setChargement(true);
+    setErreurListe(null);
+    const resultat = await listerTickets(filtre);
+    if (estUneErreur(resultat)) {
+      setErreurListe(resultat);
+    } else {
+      setTickets(resultat);
+    }
+    setChargement(false);
+  }, [filtre]);
+
+  useEffect(() => {
+    chargerTickets();
+  }, [chargerTickets]);
+
+  // ── Fermeture d'un ticket ─────────────────────────────────────────────────
+  const demanderFermeture = (id: number) => {
+    setErreurFermeture(null);
+    setIdAFermer(id);
+  };
+
+  const confirmerFermeture = async () => {
+    if (idAFermer === null) return;
+    const resultat = await fermerTicket(idAFermer);
+    if (estUneErreur(resultat)) {
+      setErreurFermeture(resultat.message);
+    } else {
+      // Mise à jour locale sans rechargement complet
+      setTickets((prev) =>
+        prev.map((t) => (t.id === resultat.id ? resultat : t))
+      );
+      setIdAFermer(null);
+    }
+  };
+
+  const annulerFermeture = () => {
+    setIdAFermer(null);
+    setErreurFermeture(null);
+  };
+
+  // ── Titre du ticket à fermer (pour la modale) ─────────────────────────────
+  const ticketAFermer = tickets.find((t) => t.id === idAFermer);
+
+  // ── Rendu ─────────────────────────────────────────────────────────────────
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="container py-4">
+      {/* En-tête */}
+      <div className="mb-4">
+        <h1 className="h3 fw-bold">🎫 Gestion des Tickets</h1>
+        <p className="text-muted mb-0">Créez, consultez et fermez vos tickets de support.</p>
+      </div>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      <div className="row g-4">
+        {/* Colonne gauche : formulaire de création */}
+        <div className="col-12 col-lg-4">
+          <div className="card shadow-sm">
+            <div className="card-header fw-semibold">Nouveau ticket</div>
+            <div className="card-body">
+              <FormulaireCreation onCreation={chargerTickets} />
+            </div>
+          </div>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {/* Colonne droite : filtre + liste */}
+        <div className="col-12 col-lg-8">
+          <FiltreStatut valeur={filtre} onChange={setFiltre} />
+          <ListeTickets
+            tickets={tickets}
+            chargement={chargement}
+            erreur={erreurListe}
+            onReessayer={chargerTickets}
+            onFermer={demanderFermeture}
+          />
+        </div>
+      </div>
+
+      {/* Modale de confirmation de fermeture */}
+      {idAFermer !== null && (
+        <ModaleConfirmation
+          titre="Confirmer la fermeture"
+          message={
+            ticketAFermer
+              ? `Voulez-vous fermer le ticket « ${ticketAFermer.titre} » ?`
+              : 'Voulez-vous fermer ce ticket ?'
+          }
+          erreur={erreurFermeture}
+          onConfirmer={confirmerFermeture}
+          onAnnuler={annulerFermeture}
+        />
+      )}
+    </div>
+  );
 }
-
-export default App
